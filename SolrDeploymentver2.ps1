@@ -16,6 +16,11 @@ $InstanceName     = 'sc940xp0rev3604'
 $SolrVersion      = 'solr-8.4.0'	#only solr version should be enough
 $SolrUrl          = "https://archive.apache.org/dist/lucene/solr/8.4.0/solr-8.4.0.zip"	#no need to mention here. Create the path in below section, with using $SolrVersion
 $JREBinDir        = "$Env:Java_Home"+"\bin"		#no need to mention the path
+$SolrVersion      = 'solr-8.4.0'
+#only solr version should be enough
+$SolrUrl          = "https://archive.apache.org/dist/lucene/solr/8.4.0/solr-8.4.0.zip"
+#now it is okay not expose as variable
+$JREBinDir        = "$Env:Java_Home"+"\bin"
 $EnableSolrSSL    = $true
 $storepass        = 'secret' #min 6 character
 #add solr cloud capability
