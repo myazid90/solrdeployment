@@ -7,22 +7,24 @@
 	4. Options to remove solr
 	5. Solr as service
 	6. Make ps1 as bat or exe
+	7. Create log
 #>
 
 #===================Detail (Value here can be configure)======================================#
 $FolderName       = "SolrDeployDir"
 $InstanceName     = 'sc940xp0rev3604'
-$SolrVersion      = 'solr-8.4.0'
-#only solr version should be enough
-$SolrUrl          = "https://archive.apache.org/dist/lucene/solr/8.4.0/solr-8.4.0.zip"
-$JREBinDir        = "$Env:Java_Home"+"\bin"
+$SolrVersion      = 'solr-8.4.0'	#only solr version should be enough
+$SolrUrl          = "https://archive.apache.org/dist/lucene/solr/8.4.0/solr-8.4.0.zip"	#no need to mention here. Create the path in below section, with using $SolrVersion
+$JREBinDir        = "$Env:Java_Home"+"\bin"		#no need to mention the path
 $EnableSolrSSL    = $true
 $storepass        = 'secret' #min 6 character
+#add solr cloud capability
 
 
 #======================Value not to be configure=====================#
 $SolrPort             = '8987'
 $SolrSSLPort	      = '8989'
+#add port for solr cloud
 $FolderDir            = 'C:\'+$FolderName
 $SolrDir              = $FolderDir + '\' + $SolrVersion
 $zipfile              = $FolderDir + '\' +$SolrVersion+'.zip'
@@ -94,7 +96,7 @@ Write-Output '$manageSchemabackup is re-created'
 
 
 # =====================Update managed-schema==================================#
-$getcontent = Get-Content -Path $manageschemalocation -Raw
+#$getcontent = Get-Content -Path $manageschemalocation -Raw
 # Add unique_id field
 ((Get-Content -Path $manageschemalocation -Raw) -replace "<uniqueKey>id</uniqueKey>", "<uniqueKey>_uniqueid</uniqueKey>") |Set-Content $manageschemalocation
 
@@ -192,7 +194,7 @@ foreach ($index in $Indexes){
 		((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_TRUST_STORE_TYPE=JKS", "set SOLR_SSL_TRUST_STORE_TYPE=JKS") |Set-Content $SolrInCmdDir
 		
 		#============Start Solr with SSL============#
-		cd $SolrDir;
+		Set-Location $SolrDir;
 		bin\Solr.cmd stop -all;
 		bin\Solr.cmd start -p $SolrSSLPort;
 		Write-Output 'Starting Solr at port $SolrSSLPort'
@@ -208,7 +210,7 @@ foreach ($index in $Indexes){
 	}else
 	{
 		#===========Start Solr without SSL===================#
-		cd $SolrDir;
+		Set-Location $SolrDir;
 		bin\Solr.cmd stop -all;
 		bin\Solr.cmd start -p $SolrPort;
 		Write-Output 'Starting Solr at port $SolrPort'
@@ -221,4 +223,14 @@ foreach ($index in $Indexes){
 			}
 		Write-Output '------End------'
 	}
+
+# ToDo: Separate starting solr component, will benefit for having solrcloud setup
+
+# ====================Setup Solr Cloud ====================================#
+# ToDo: Solr cloud configurations
+# ToDo: Pre-requisite - Configure Zookeeper
+# 1. Solr Cloud with SSL
+# 2. Solr Cloud without SSL
+
+
 
