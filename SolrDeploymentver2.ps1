@@ -14,15 +14,15 @@
 $FolderName			= "SolrDeployDir"
 $InstanceName		= 'sc940xp0rev3604'
 $SolrVersion		= 'solr-8.4.0'
+$SolrCloud			= $false
 $EnableSolrSSL		= $true
 $storepass			= 'secret' #min 6 character
 #add solr cloud capability
 
 
 #======================Value not to be configure=====================#
-$SolrPort				= '8987'
-$SolrSSLPort			= '8989'
-#add port for solr cloud
+$SolrPort1				= '8983'
+$SolrPort2				= '7574'
 $JREBinDir				= "$Env:Java_Home"+"\bin"
 $SolrUrl				= 'https://archive.apache.org/dist/lucene/solr/'+$SolrVersion.Substring(5)+'/'+$SolrVersion+'.zip'
 $FolderDir				= 'C:\'+$FolderName
@@ -65,7 +65,7 @@ if(Test-Path -path $FolderDir)
 		New-Item -Path $FolderDir -ItemType Directory
 		Write-Output "$FolderDir created"
 	}
-	
+
 if(Test-Path -path $zipfile)
 	{
 		Remove-Item -Path $zipfile -Force -Recurse
@@ -83,7 +83,9 @@ if(Test-Path -path $SolrDir)
 	}
 	Expand-Archive -LiteralPath $zipfile -DestinationPath $FolderDir -Force
 
+
 # ====================create backup for managed-schema==================#
+
 if(Test-Path -path $manageSchemabackup)
 	{
 		Write-Output '$manageSchemabackup is exist. Removing current $manageschemalocation...'
@@ -105,29 +107,32 @@ Write-Output '$manageSchemabackup is re-created'
 
 
 # =================Create Solr Core==========================================#
-$Indexes = @($coreindex, $masterindex, $webindex, $madefmasterindex, $madefwebindex, $maassetmasterindex, $maassetwebindex, $testingindex, $suggesttestindex, $fxmmasterindex, $fxmwebindex, $personalizationindex )
+function CreateStandaloneSolrCores {
+	$Indexes = @($coreindex, $masterindex, $webindex, $madefmasterindex, $madefwebindex, $maassetmasterindex, $maassetwebindex, $testingindex, $suggesttestindex, $fxmmasterindex, $fxmwebindex, $personalizationindex )
 
-foreach ($index in $Indexes){
+	foreach ($index in $Indexes){
 
-    if(Test-Path -path $solrIndexesDir$index)
-	{
-        Remove-Item -path $solrIndexesDir$index -Recurse -Force
-	    Write-Output '$solrIndexesDir$index is removed.'
+		if(Test-Path -path $solrIndexesDir$index)
+		{
+			Remove-Item -path $solrIndexesDir$index -Recurse -Force
+			Write-Output '$solrIndexesDir$index is removed.'
+		}
+		Write-Output 'Creating $solrIndexesDir$index...'
+		New-Item -Path $solrIndexesDir$index -ItemType Directory
+		Get-ChildItem -Path $_defaultdir | ForEach-Object {Copy-Item $_.FullName -Destination $solrIndexesDir$index -Recurse -Force}
+		New-Item -Path $solrIndexesDir$index\core.properties -ItemType File
+		Add-Content -Path $solrIndexesDir$index\core.properties -value "name=$index`nconfig=solrconfig.xml`nupdate.autoCreateFields=false`ndataDir=data"
+		Write-Output '$solrIndexesDir$index is created.'
 	}
-	Write-Output 'Creating $solrIndexesDir$index...'
-	New-Item -Path $solrIndexesDir$index -ItemType Directory
-	Get-ChildItem -Path $_defaultdir | % {Copy-Item $_.FullName -Destination $solrIndexesDir$index -Recurse -Force}
-	New-Item -Path $solrIndexesDir$index\core.properties -ItemType File
-	Add-Content -Path $solrIndexesDir$index\core.properties -value "name=$index`nconfig=solrconfig.xml`nupdate.autoCreateFields=false`ndataDir=data"
-	Write-Output '$solrIndexesDir$index is created.'
 }
+
 
 # ================================Setup Solr ==============================#
 	
 	if($EnableSolrSSL -eq "$true")
 	{
 		# ===========Create KeyStore===================#
-		cd $JREBinDir;
+		Set-Location $JREBinDir;
 		if(Test-Path -path $JREBinDir$keystorejks)
 			{
 			Write-Output "$JREBinDir$keystorejks is exist"
