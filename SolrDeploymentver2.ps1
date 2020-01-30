@@ -39,6 +39,8 @@ $SolrBinDir				= $SolrDir + '\bin';
 $solrEtcDir				= $SolrDir + '\server\etc\'
 $SolrInCmdDir			= $SolrBinDir + '\solr.in.cmd'
 $SolrInCmdBackupDir		= $SolrBinDir + '\solr.in.cmd.backup'
+$HTTP_Protocol			= 'http'
+if($EnableSolrSSL){$HTTP_Protocol='https'} else {$HTTP_Protocol='http'}
 
 
 #=================Sitecore Indexes Name===============================#
@@ -129,6 +131,11 @@ function Set-StandaloneSolrCores {
 	}
 }
 
+function Set-SolrCloudSetup{
+	#create sitecore_indexes folder here
+
+}
+
 
 # ================================Setup Solr ==============================#
 function Set-SolrCertificates {
@@ -204,55 +211,48 @@ function Set-SolrCertificates {
 
 }
 
+#================== Running Solr =================#
 function Set-RunningSolr {
 	#============Start Solr with SSL============#
 	Set-Location $SolrDir;
 	bin\Solr.cmd stop -all;
-	bin\Solr.cmd start -p $SolrSSLPort;
-	Write-Output 'Starting Solr at port $SolrSSLPort'
-	[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-	(Invoke-WebRequest "https://localhost:$SolrSSLPort/solr/#/").statuscode
-	If ($HTTP_Status -eq 200)
+	if ($SolrCloud){
+		#SolrCloud example with internal zookeeper and example GettingStarted collection
+		bin\Solr.cmd start -e cloud -noprompt;
+		Write-Output "Starting Solr at port $SolrPort1"
+		[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+		(Invoke-WebRequest '$HTTP_Protocol://localhost:$SolrPort1/solr/#/').statuscode
+		If ($HTTP_Status -eq 200)
 		{
 			Write-Host "$HTTP_Response.StatusCode Site is OK!"
 			Write-Host "Launch Solr in browser(google)"
-			[System.Diagnostics.Process]::Start("https://localhost:$SolrSSLPort/solr/#/")
+			[System.Diagnostics.Process]::Start('$HTTP_Protocol://localhost:$SolrPort1/solr/#/')
 		}
-	Write-Output '------End------'
-	else
-	{
-		#===========Start Solr without SSL===================#
-		Set-Location $SolrDir;
-		bin\Solr.cmd stop -all;
-		bin\Solr.cmd start -p $SolrPort;
-		Write-Output 'Starting Solr at port $SolrPort'
-		[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-		(Invoke-WebRequest -Uri "http://localhost:$SolrPort/solr/#/").statuscode
-		If ($HTTP_Status -eq 200) 
-			{
-				Write-Host "$HTTP_Response.StatusCode Site is OK!"
-				[System.Diagnostics.Process]::Start("https://localhost:$SolrPort/solr/#/")
-			}
-		Write-Output '------End------'
 	}
+	else{
+		bin\Solr.cmd start -p $SolrPort1;
+		Write-Output "Starting Solr at port $SolrPort1"
+		[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+		(Invoke-WebRequest '$HTTP_Protocol://localhost:$SolrPort1/solr/#/').statuscode
+		If ($HTTP_Status -eq 200)
+		{
+			Write-Host "$HTTP_Response.StatusCode Site is OK!"
+			Write-Host "Launch Solr in browser(google)"
+			[System.Diagnostics.Process]::Start('$HTTP_Protocol://localhost:$SolrPort1/solr/#/')
+		}
+	}
+	Write-Output '------End------'
 }
-
-
-# ToDo: Separate starting solr component, will benefit for having solrcloud setup
-
-# ====================Setup Solr Cloud ====================================#
-# ToDo: Solr cloud configurations
-# ToDo: Pre-requisite - Configure Zookeeper
-# 1. Solr Cloud with SSL
-# 2. Solr Cloud without SSL
 
 #===================== Main area =====================#
 # Here is where functions are called
 New-SolrDownload
 Update-ManagedSchema
-Set-StandaloneSolrCores
-Set-SolrCertificates
+if($EnableSolrSSL) {Set-SolrCertificates}
+if($SolrCloud) {Set-SolrCloudSetup} else {Set-StandaloneSolrCores}
 Set-RunningSolr
+#populate
+#rebuild index
 
 
 
