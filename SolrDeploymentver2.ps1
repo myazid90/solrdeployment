@@ -57,8 +57,9 @@ $personalizationindex = $InstanceName+'_personalization_index'
 
 
 # ======================Download Solr from apache=====================#
-if(Test-Path -path $FolderDir)
-	{
+function New-SolrDownload {
+	Write-Output "Testing $FolderDir existance."
+	if(Test-Path -path $FolderDir){
 		Write-Output "$FolderDir is exist. Please specify other value for `$FolderName" -ErrorAction $errorAction
 	}
 	else{
@@ -66,48 +67,50 @@ if(Test-Path -path $FolderDir)
 		Write-Output "$FolderDir created"
 	}
 
-if(Test-Path -path $zipfile)
-	{
+	if(Test-Path -path $zipfile){
 		Remove-Item -Path $zipfile -Force -Recurse
 		Write-Output "$zipfile is removed."
 	}
+
 	Write-Output "Downloading $SolrVersion at $SolrUrl"
 	Import-Module BitsTransfer
 	Start-BitsTransfer -Source $SolrUrl -Destination $FolderDir
 	Write-Output "$SolrVersion is downloaded at $SolrDir"
 
-# unzip file
-if(Test-Path -path $SolrDir)
-	{
+	# unzip file
+	if(Test-Path -path $SolrDir){
 		Remove-Item -Path $SolrDir -Force -Recurse 
 	}
+	
 	Expand-Archive -LiteralPath $zipfile -DestinationPath $FolderDir -Force
+}
 
 
 # ====================create backup for managed-schema==================#
-
-if(Test-Path -path $manageSchemabackup)
-	{
+function Update-ManagedSchema {
+	if(Test-Path -path $manageSchemabackup){
 		Write-Output '$manageSchemabackup is exist. Removing current $manageschemalocation...'
 		Remove-Item -path $manageschemalocation
 		Write-Output '$manageSchemabackup is removed.'
 	}
-Write-Output 'Creating $manageSchemabackup...'
-Copy-Item $manageschemalocation -Destination $manageSchemabackup -Recurse -Force
-Write-Output '$manageSchemabackup is re-created'
 
+	Write-Output 'Creating $manageSchemabackup...'
+	Copy-Item $manageschemalocation -Destination $manageSchemabackup -Recurse -Force
+	Write-Output '$manageSchemabackup is re-created'
 
-# =====================Update managed-schema==================================#
-#$getcontent = Get-Content -Path $manageschemalocation -Raw
-# Add unique_id field
-((Get-Content -Path $manageschemalocation -Raw) -replace "<uniqueKey>id</uniqueKey>", "<uniqueKey>_uniqueid</uniqueKey>") |Set-Content $manageschemalocation
+	# =====================Update managed-schema==================================#
+	#$getcontent = Get-Content -Path $manageschemalocation -Raw
+	# Add unique_id field
+	((Get-Content -Path $manageschemalocation -Raw) -replace "<uniqueKey>id</uniqueKey>", "<uniqueKey>_uniqueid</uniqueKey>") |Set-Content $manageschemalocation
 
-# Add unique_id field
-((Get-Content -Path $manageschemalocation -Raw) -replace '<field name="id" type="string" indexed="true" stored="true" required="true" multiValued="false" />', "<field name=""_uniqueid"" type=""string"" indexed=""true"" required=""true"" stored=""true""/>`n`t<field name=""id"" type=""string"" indexed=""true"" stored=""true"" required=""true"" multiValued=""false"" />") | Set-Content $manageschemalocation
+	# Add unique_id field
+	((Get-Content -Path $manageschemalocation -Raw) -replace '<field name="id" type="string" indexed="true" stored="true" required="true" multiValued="false" />', "<field name=""_uniqueid"" type=""string"" indexed=""true"" required=""true"" stored=""true""/>`n`t<field name=""id"" type=""string"" indexed=""true"" stored=""true"" required=""true"" multiValued=""false"" />") | Set-Content $manageschemalocation
+
+}
 
 
 # =================Create Solr Core==========================================#
-function CreateStandaloneSolrCores {
+function Set-StandaloneSolrCores {
 	$Indexes = @($coreindex, $masterindex, $webindex, $madefmasterindex, $madefwebindex, $maassetmasterindex, $maassetwebindex, $testingindex, $suggesttestindex, $fxmmasterindex, $fxmwebindex, $personalizationindex )
 
 	foreach ($index in $Indexes){
@@ -128,91 +131,95 @@ function CreateStandaloneSolrCores {
 
 
 # ================================Setup Solr ==============================#
+function Set-SolrCertificates {
+	# ===========Create KeyStore===================#
+	Set-Location $JREBinDir;
+
+	if(Test-Path -path $JREBinDir$keystorejks){
+		Write-Output "$JREBinDir$keystorejks is exist"
+		Remove-Item -path $JREBinDir$keystorejks 
+		Write-Output "$JREBinDir$keystorejks is deleted from $JREBinDir"
+	}
+
+	keytool.exe -genkeypair -alias $InstanceName -keyalg RSA -keysize 2048 -keypass secret -storepass secret -validity 9999 -keystore $keystorejks -ext SAN=DNS:localhost,IP:127.0.0.1 -dname "CN=$InstanceName, OU=Organizational Unit, O=Organization, L=Location, ST=State, C=Country"
+	Write-Output "$JREBinDir$keystorejks is created in $JREBinDir"
 	
-	if($EnableSolrSSL -eq "$true")
-	{
-		# ===========Create KeyStore===================#
-		Set-Location $JREBinDir;
-		if(Test-Path -path $JREBinDir$keystorejks)
-			{
-			Write-Output "$JREBinDir$keystorejks is exist"
-			Remove-Item -path $JREBinDir$keystorejks 
-			Write-Output "$JREBinDir$keystorejks is deleted from $JREBinDir"
-			}		
-		keytool.exe -genkeypair -alias $InstanceName -keyalg RSA -keysize 2048 -keypass secret -storepass secret -validity 9999 -keystore $keystorejks -ext SAN=DNS:localhost,IP:127.0.0.1 -dname "CN=$InstanceName, OU=Organizational Unit, O=Organization, L=Location, ST=State, C=Country"
-		Write-Output "$JREBinDir$keystorejks is created in $JREBinDir"
-		
-		# ===========Generate Certificate===================#
-		if(Test-Path -path $JREBinDir$keystorep12)
-			{
-			Write-Output "$JREBinDir$keystorep12 is exist"
-			Remove-Item -path $JREBinDir$keystorep12
-			Write-Output "$JREBinDir$keystorep12 is deleted from $JREBinDir"
-			}
-		keytool.exe -importkeystore -srckeystore $keystorejks -destkeystore $keystorep12 -srcstoretype jks -deststoretype pkcs12
-
-		# Manually enter 'Enter destination keystore password:' ($storepass)
-		# Manually enter 'Re-enter new password:'($storepass)
-		# Manually enter 'Enter source keystore password'($storepass)
-		Write-Output "$JREBinDir$keystorep12 is created in $JREBinDir"
-
-		# ===========Install Certificate===================#
-		$certpath=Get-ChildItem -Path Cert:\LocalMachine\Root | Where-Object {$_.FriendlyName -eq $InstanceName}
-		if($certpath)
-			{
-			$certpath|Remove-Item
-			Write-Output "$certpath is deleted from Cert:\LocalMachine\Root"
-			}
-		Import-PfxCertificate -FilePath $JREBinDir$keystorep12 -CertStoreLocation Cert:\LocalMachine\Root\ -Password (ConvertTo-SecureString -String $storepass -AsPlainText -Force)
-		Write-Output "Certificate with Friendly Name $InstanceName is created in Cert:\LocalMachine\Root\"
-		# move the certificate to Solr Directory
-		Copy-Item -Path $JREBinDir$keystorejks -Destination $solrEtcDir
-		Write-Output "$JREBinDir$keystorejks is created in $solrEtcDir"
-		Remove-Item -path $JREBinDir$keystorejks
-		Write-Output "$JREBinDir$keystorejks is removed from $JREBinDir"
-		
-		Copy-Item -Path $JREBinDir$keystorep12 -Destination $solrEtcDir
-		Write-Output "$JREBinDir$keystorep12 is created in $solrEtcDir"
+	# ===========Generate Certificate===================#
+	if(Test-Path -path $JREBinDir$keystorep12){
+		Write-Output "$JREBinDir$keystorep12 is exist"
 		Remove-Item -path $JREBinDir$keystorep12
-		Write-Output "$JREBinDir$keystorep12 is removed from $JREBinDir"
-		
-		# ===========Enable SSL in Solr===================#
-		# backup solr.in.cmd file
-		if(Test-Path -path $SolrInCmdBackupDir){Write-Output "$SolrBinDir\solr.in.cmd.backup is exist. New copy of solr.in.cmd.backup is not created."}
-		else{
-			Copy-Item $SolrInCmdDir -Destination $SolrInCmdBackupDir -Force
-			Write-Output "solr.in.cmd.backup is created in $SolrBinDir"
-			}
+		Write-Output "$JREBinDir$keystorep12 is deleted from $JREBinDir"
+	}
 
-		# uncomment solr_ssl related configuration
-		$getSolrSSLContent = Get-Content -Path $SolrInCmdDir -Raw
-		((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_ENABLED=true", "set SOLR_SSL_ENABLED=true") | Set-Content $SolrInCmdDir
-		((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_KEY_STORE=etc/solr-ssl.keystore.jks", "set SOLR_SSL_KEY_STORE=etc/$InstanceName.keystore.jks") | Set-Content $SolrInCmdDir
-		((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_KEY_STORE_PASSWORD=secret", "set SOLR_SSL_KEY_STORE_PASSWORD=$storepass") |Set-Content $SolrInCmdDir
-		((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_TRUST_STORE=etc/solr-ssl.keystore.jks", "set SOLR_SSL_TRUST_STORE=etc/$InstanceName.keystore.jks") |Set-Content $SolrInCmdDir
-		((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_TRUST_STORE_PASSWORD=secret", "set SOLR_SSL_TRUST_STORE_PASSWORD=$storepass") |Set-Content $SolrInCmdDir
-		((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_NEED_CLIENT_AUTH=false", "set SOLR_SSL_NEED_CLIENT_AUTH=false") |Set-Content $SolrInCmdDir
-		((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_WANT_CLIENT_AUTH=false", "set SOLR_SSL_WANT_CLIENT_AUTH=false") |Set-Content $SolrInCmdDir
-		((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_CLIENT_HOSTNAME_VERIFICATION=false", "set SOLR_SSL_CLIENT_HOSTNAME_VERIFICATION=false") |Set-Content $SolrInCmdDir
-		((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_CHECK_PEER_NAME=true", "set SOLR_SSL_CHECK_PEER_NAME=true") |Set-Content $SolrInCmdDir
-		((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_KEY_STORE_TYPE=JKS", "set SOLR_SSL_KEY_STORE_TYPE=JKS") |Set-Content $SolrInCmdDir
-		((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_TRUST_STORE_TYPE=JKS", "set SOLR_SSL_TRUST_STORE_TYPE=JKS") |Set-Content $SolrInCmdDir
-		
-		#============Start Solr with SSL============#
-		Set-Location $SolrDir;
-		bin\Solr.cmd stop -all;
-		bin\Solr.cmd start -p $SolrSSLPort;
-		Write-Output 'Starting Solr at port $SolrSSLPort'
-		[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-		(Invoke-WebRequest "https://localhost:$SolrSSLPort/solr/#/").statuscode
-		If ($HTTP_Status -eq 200) 
-			{
-				Write-Host "$HTTP_Response.StatusCode Site is OK!"
-				Write-Host "Launch Solr in browser(google)"
-				[System.Diagnostics.Process]::Start("https://localhost:$SolrSSLPort/solr/#/")
-			}
-		Write-Output '------End------'
-	}else
+	keytool.exe -importkeystore -srckeystore $keystorejks -destkeystore $keystorep12 -srcstoretype jks -deststoretype pkcs12
+
+	# Manually enter 'Enter destination keystore password:' ($storepass)
+	# Manually enter 'Re-enter new password:'($storepass)
+	# Manually enter 'Enter source keystore password'($storepass)
+	Write-Output "$JREBinDir$keystorep12 is created in $JREBinDir"
+
+	# ===========Install Certificate===================#
+	$certpath=Get-ChildItem -Path Cert:\LocalMachine\Root | Where-Object {$_.FriendlyName -eq $InstanceName}
+	if($certpath){
+		$certpath|Remove-Item
+		Write-Output "$certpath is deleted from Cert:\LocalMachine\Root"
+	}
+
+	Import-PfxCertificate -FilePath $JREBinDir$keystorep12 -CertStoreLocation Cert:\LocalMachine\Root\ -Password (ConvertTo-SecureString -String $storepass -AsPlainText -Force)
+	Write-Output "Certificate with Friendly Name $InstanceName is created in Cert:\LocalMachine\Root\"
+	# move the certificate to Solr Directory
+	Copy-Item -Path $JREBinDir$keystorejks -Destination $solrEtcDir
+	Write-Output "$JREBinDir$keystorejks is created in $solrEtcDir"
+	Remove-Item -path $JREBinDir$keystorejks
+	Write-Output "$JREBinDir$keystorejks is removed from $JREBinDir"
+	
+	Copy-Item -Path $JREBinDir$keystorep12 -Destination $solrEtcDir
+	Write-Output "$JREBinDir$keystorep12 is created in $solrEtcDir"
+	Remove-Item -path $JREBinDir$keystorep12
+	Write-Output "$JREBinDir$keystorep12 is removed from $JREBinDir"
+	
+	# ===========Enable SSL in Solr===================#
+	# backup solr.in.cmd file
+	if(Test-Path -path $SolrInCmdBackupDir){
+		Write-Output "$SolrBinDir\solr.in.cmd.backup is exist. New copy of solr.in.cmd.backup is not created."
+	}
+	else{
+		Copy-Item $SolrInCmdDir -Destination $SolrInCmdBackupDir -Force
+		Write-Output "solr.in.cmd.backup is created in $SolrBinDir"
+	}
+
+	# uncomment solr_ssl related configuration
+	#$getSolrSSLContent = Get-Content -Path $SolrInCmdDir -Raw
+	((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_ENABLED=true", "set SOLR_SSL_ENABLED=true") | Set-Content $SolrInCmdDir
+	((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_KEY_STORE=etc/solr-ssl.keystore.jks", "set SOLR_SSL_KEY_STORE=etc/$InstanceName.keystore.jks") | Set-Content $SolrInCmdDir
+	((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_KEY_STORE_PASSWORD=secret", "set SOLR_SSL_KEY_STORE_PASSWORD=$storepass") |Set-Content $SolrInCmdDir
+	((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_TRUST_STORE=etc/solr-ssl.keystore.jks", "set SOLR_SSL_TRUST_STORE=etc/$InstanceName.keystore.jks") |Set-Content $SolrInCmdDir
+	((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_TRUST_STORE_PASSWORD=secret", "set SOLR_SSL_TRUST_STORE_PASSWORD=$storepass") |Set-Content $SolrInCmdDir
+	((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_NEED_CLIENT_AUTH=false", "set SOLR_SSL_NEED_CLIENT_AUTH=false") |Set-Content $SolrInCmdDir
+	((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_WANT_CLIENT_AUTH=false", "set SOLR_SSL_WANT_CLIENT_AUTH=false") |Set-Content $SolrInCmdDir
+	((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_CLIENT_HOSTNAME_VERIFICATION=false", "set SOLR_SSL_CLIENT_HOSTNAME_VERIFICATION=false") |Set-Content $SolrInCmdDir
+	((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_CHECK_PEER_NAME=true", "set SOLR_SSL_CHECK_PEER_NAME=true") |Set-Content $SolrInCmdDir
+	((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_KEY_STORE_TYPE=JKS", "set SOLR_SSL_KEY_STORE_TYPE=JKS") |Set-Content $SolrInCmdDir
+	((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_TRUST_STORE_TYPE=JKS", "set SOLR_SSL_TRUST_STORE_TYPE=JKS") |Set-Content $SolrInCmdDir
+
+}
+
+function Set-RunningSolr {
+	#============Start Solr with SSL============#
+	Set-Location $SolrDir;
+	bin\Solr.cmd stop -all;
+	bin\Solr.cmd start -p $SolrSSLPort;
+	Write-Output 'Starting Solr at port $SolrSSLPort'
+	[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+	(Invoke-WebRequest "https://localhost:$SolrSSLPort/solr/#/").statuscode
+	If ($HTTP_Status -eq 200)
+		{
+			Write-Host "$HTTP_Response.StatusCode Site is OK!"
+			Write-Host "Launch Solr in browser(google)"
+			[System.Diagnostics.Process]::Start("https://localhost:$SolrSSLPort/solr/#/")
+		}
+	Write-Output '------End------'
+	else
 	{
 		#===========Start Solr without SSL===================#
 		Set-Location $SolrDir;
@@ -228,6 +235,8 @@ function CreateStandaloneSolrCores {
 			}
 		Write-Output '------End------'
 	}
+}
+
 
 # ToDo: Separate starting solr component, will benefit for having solrcloud setup
 
@@ -236,6 +245,15 @@ function CreateStandaloneSolrCores {
 # ToDo: Pre-requisite - Configure Zookeeper
 # 1. Solr Cloud with SSL
 # 2. Solr Cloud without SSL
+
+#===================== Main area =====================#
+# Here is where functions are called
+New-SolrDownload
+Update-ManagedSchema
+Set-StandaloneSolrCores
+Set-SolrCertificates
+Set-RunningSolr
+
 
 
 
