@@ -12,10 +12,10 @@
 
 #===================Detail (Value here can be configure)======================================#
 $FolderName			= "SolrDeployDir"
-$InstanceName		= 'sc940xp0rev3604'
+$InstanceName		= 'sitecore'
 $SolrVersion		= 'solr-8.4.0'
-$SolrCloud			= $false
-$EnableSolrSSL		= $true
+$SolrCloud			= $true
+$EnableSolrSSL		= $false
 $storepass			= 'secret' #min 6 character
 #add solr cloud capability
 
@@ -28,6 +28,7 @@ $SolrUrl				= 'https://archive.apache.org/dist/lucene/solr/'+$SolrVersion.Substr
 $FolderDir				= 'C:\'+$FolderName
 $SolrDir				= $FolderDir + '\' + $SolrVersion
 $zipfile				= $FolderDir + '\' +$SolrVersion+'.zip'
+$sitecore_indexesDir	= $FolderDir+'\'+$SolrVersion+'\server\solr\sitecore_indexes'
 $solrIndexesDir			= $FolderDir+'\'+$SolrVersion+'\server\solr\'
 $_defaultdir			= $FolderDir+'\'+$SolrVersion+'\server\solr\configsets\_default\'
 $manageschemalocation	= $solrIndexesDir+'\configsets\_default\conf\managed-schema'
@@ -101,7 +102,7 @@ function Update-ManagedSchema {
 	Write-Output '$manageSchemabackup is re-created'
 
 	# =====================Update managed-schema==================================#
-	#$getcontent = Get-Content -Path $manageschemalocation -Raw
+	$getcontent = Get-Content -Path $manageschemalocation -Raw
 	# Add unique_id field
 	((Get-Content -Path $manageschemalocation -Raw) -replace "<uniqueKey>id</uniqueKey>", "<uniqueKey>_uniqueid</uniqueKey>") |Set-Content $manageschemalocation
 
@@ -117,8 +118,7 @@ function Set-StandaloneSolrCores {
 
 	foreach ($index in $Indexes){
 
-		if(Test-Path -path $solrIndexesDir$index)
-		{
+		if(Test-Path -path $solrIndexesDir$index){
 			Remove-Item -path $solrIndexesDir$index -Recurse -Force
 			Write-Output '$solrIndexesDir$index is removed.'
 		}
@@ -133,7 +133,20 @@ function Set-StandaloneSolrCores {
 
 function Set-SolrCloudSetup{
 	#create sitecore_indexes folder here
+	if(Test-Path -path $sitecore_indexesDir){
+		Remove-Item -path $sitecore_indexesDir -Recurse -Force
+		Write-Output '$sitecore_indexesDir is removed.'
+	}
+	Write-Output 'Creating $sitecore_indexesDir...'
+	New-Item -Path $sitecore_indexesDir -ItemType Directory
+	Get-ChildItem -Path $_defaultdir | ForEach-Object {Copy-Item $_.FullName -Destination $sitecore_indexesDir -Recurse -Force}
+	Write-Output '$sitecore_indexesDir is created.'
+}
 
+function Set-ZookeeperSetup {
+	#setup zookeeper
+	#running zookeeper
+	#upload sitecore_indexes	
 }
 
 
@@ -196,7 +209,7 @@ function Set-SolrCertificates {
 	}
 
 	# uncomment solr_ssl related configuration
-	#$getSolrSSLContent = Get-Content -Path $SolrInCmdDir -Raw
+	$getSolrSSLContent = Get-Content -Path $SolrInCmdDir -Raw
 	((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_ENABLED=true", "set SOLR_SSL_ENABLED=true") | Set-Content $SolrInCmdDir
 	((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_KEY_STORE=etc/solr-ssl.keystore.jks", "set SOLR_SSL_KEY_STORE=etc/$InstanceName.keystore.jks") | Set-Content $SolrInCmdDir
 	((Get-Content -Path $SolrInCmdDir -Raw) -replace "REM set SOLR_SSL_KEY_STORE_PASSWORD=secret", "set SOLR_SSL_KEY_STORE_PASSWORD=$storepass") |Set-Content $SolrInCmdDir
@@ -249,7 +262,8 @@ function Set-RunningSolr {
 New-SolrDownload
 Update-ManagedSchema
 if($EnableSolrSSL) {Set-SolrCertificates}
-if($SolrCloud) {Set-SolrCloudSetup} else {Set-StandaloneSolrCores}
+if($SolrCloud) {Set-SolrCloudSetup;Set-ZookeeperSetup} else {Set-StandaloneSolrCores}
+
 Set-RunningSolr
 #populate
 #rebuild index
