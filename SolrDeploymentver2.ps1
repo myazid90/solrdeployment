@@ -149,6 +149,35 @@ function Set-ZookeeperSetup {
 	#upload sitecore_indexes	
 }
 
+function Set-Collections {
+	#=================== Create Solr Collections ==================#
+	#setup API strings
+	<#
+		Port number				: $SolrPort1
+		Sitecore Instance name	: $InstanceName
+		numShards				: 1
+		replicationFactor		: 1
+		maxShardsPerNode		: 1
+		collection.configName	: 'sitecore_indexes'
+	#>
+	$Indexes = @($coreindex, $masterindex, $webindex, $madefmasterindex, $madefwebindex, $maassetmasterindex, $maassetwebindex, $testingindex, $suggesttestindex, $fxmmasterindex, $fxmwebindex, $personalizationindex )
+
+	foreach ($index in $Indexes){
+		$main_index 	= "$HTTP_Protocol`://localhost:$SolrPort1/solr/admin/collections?action=CREATE&name=$InstanceName$Indexes&numShards=1&replicationFactor=1&maxShardsPerNode=1&collection.configName=sitecore_indexes"
+		$rebuild_index 	= "$HTTP_Protocol`://localhost:$SolrPort1/solr/admin/collections?action=CREATE&name=$InstanceName$Indexes`_rebuild&numShards=1&replicationFactor=1&maxShardsPerNode=1&collection.configName=sitecore_indexes"
+		$alias_index	= "$HTTP_Protocol`://localhost:$SolrPort1/solr/admin/collections?action=CREATEALIAS&name=$InstanceName$Indexes`MainAlias&collections=$InstanceName$Indexes"
+
+		try {
+			Invoke-WebRequest $main_index.statuscode
+			Invoke-WebRequest $rebuild_index.statuscode
+			Invoke-WebRequest $alias_index.statuscode
+		}
+		catch {
+			Write-Host "$InstanceName$Indexes not created!"
+			Write-Host $HTTP_Status
+		}
+	}
+}
 
 # ================================Setup Solr ==============================#
 function Set-SolrCertificates {
@@ -234,27 +263,27 @@ function Set-RunningSolr {
 		bin\Solr.cmd start -e cloud -noprompt;
 		Write-Output "Starting Solr at port $SolrPort1"
 		[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-		(Invoke-WebRequest '$HTTP_Protocol://localhost:$SolrPort1/solr/#/').statuscode
+		(Invoke-WebRequest "$HTTP_Protocol`://localhost:$SolrPort1/solr/#/").statuscode
 		If ($HTTP_Status -eq 200)
 		{
 			Write-Host "$HTTP_Response.StatusCode Site is OK!"
 			Write-Host "Launch Solr in browser(google)"
-			[System.Diagnostics.Process]::Start('$HTTP_Protocol://localhost:$SolrPort1/solr/#/')
+			[System.Diagnostics.Process]::Start("$HTTP_Protocol`://localhost:$SolrPort1/solr/#/")
 		}
 	}
 	else{
 		bin\Solr.cmd start -p $SolrPort1;
 		Write-Output "Starting Solr at port $SolrPort1"
 		[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-		(Invoke-WebRequest '$HTTP_Protocol://localhost:$SolrPort1/solr/#/').statuscode
+		(Invoke-WebRequest "$HTTP_Protocol`://localhost:$SolrPort1/solr/#/").statuscode
 		If ($HTTP_Status -eq 200)
 		{
 			Write-Host "$HTTP_Response.StatusCode Site is OK!"
 			Write-Host "Launch Solr in browser(google)"
-			[System.Diagnostics.Process]::Start('$HTTP_Protocol://localhost:$SolrPort1/solr/#/')
+			[System.Diagnostics.Process]::Start("$HTTP_Protocol`://localhost:$SolrPort1/solr/#/")
+			Write-Output '------End------'
 		}
 	}
-	Write-Output '------End------'
 }
 
 #===================== Main area =====================#
@@ -264,7 +293,8 @@ Update-ManagedSchema
 if($EnableSolrSSL) {Set-SolrCertificates}
 if($SolrCloud) {Set-SolrCloudSetup;Set-ZookeeperSetup} else {Set-StandaloneSolrCores}
 
-Set-RunningSolr
+#Set-RunningSolr
+#Set-Collections
 #populate
 #rebuild index
 
